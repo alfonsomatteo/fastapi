@@ -41,21 +41,29 @@ async def monta_podcast(
                 tracce_paths.append(temp_file.name)
                 temp_files.append(temp_file.name)
 
+        # Concatenazione stacchetto e tracce vocali
+        tracce_input = "|".join([stacchetto_path] + tracce_paths)
+        concatenated_audio_path = tempfile.mktemp(suffix=".mp3")
+        
+        # Comando per concatenare lo stacchetto e le tracce vocali
+        concat_command = (
+            f"ffmpeg -y -i \"concat:{tracce_input}\" -acodec copy {concatenated_audio_path}"
+        )
+        subprocess.run(concat_command, shell=True, check=True)
+        temp_files.append(concatenated_audio_path)
+
         # Percorso per il file finale del podcast
         output_podcast_path = tempfile.mktemp(suffix=".mp3")
 
-        # Comando FFmpeg per concatenare le tracce vocali e lo stacchetto, e aggiungere il background
-        tracce_input = "|".join([stacchetto_path] + tracce_paths)  # Concatenazione delle tracce
-        comando = (
-            f"ffmpeg -y -i {background_music_path} "
-            f"-filter_complex \""
-            f'concat=n={len(tracce_paths) + 1}:v=0:a=1[audio];'  # Concatenazione delle tracce
-            f'[0][audio]amix=inputs=2:duration=longest:dropout_transition=2,volume=0.2[aout]'  # Aggiunge il background a volume basso
-            f"\" -map \"[aout]\" {output_podcast_path}"
+        # Comando per aggiungere la musica di sottofondo al file concatenato
+        final_command = (
+            f"ffmpeg -y -i {concatenated_audio_path} -i {background_music_path} "
+            f"-filter_complex \"[1]volume=0.2[audio];[0][audio]amix=inputs=2:duration=longest\" "
+            f"{output_podcast_path}"
         )
 
         # Esegui il comando FFmpeg e cattura l'output
-        result = subprocess.run(comando, shell=True, check=True, text=True, capture_output=True)
+        result = subprocess.run(final_command, shell=True, check=True, text=True, capture_output=True)
         print("FFmpeg output:", result.stdout)
         print("FFmpeg error (if any):", result.stderr)
 
@@ -82,4 +90,5 @@ async def monta_podcast(
     except Exception as e:
         print("Errore:", str(e))
         raise
+
 
