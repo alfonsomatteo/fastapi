@@ -64,7 +64,7 @@ async def monta_podcast(
             tracce_paths.append(traccia_path)
             temp_files.append(traccia_path)
 
-        # Genera un file di silenzio breve (500ms)
+        # Genera un file di silenzio breve (500ms) tra le tracce vocali
         silence_path = create_silence(500)  # Durata in millisecondi
         temp_files.append(silence_path)
 
@@ -72,13 +72,14 @@ async def monta_podcast(
         concatenated_audio_path = tempfile.mktemp(suffix=".mp3")
         concat_list_path = tempfile.mktemp(suffix=".txt")
         temp_files.append(concat_list_path)
-        
-        # Creiamo un file di testo per la concatenazione con pause tra le tracce
+
+        # Creiamo un file di testo per la concatenazione senza pausa dopo lo stacchetto
         with open(concat_list_path, "w") as f:
-            f.write(f"file '{stacchetto_path}'\n")
-            for traccia_path in tracce_paths:
+            f.write(f"file '{stacchetto_path}'\n")  # Aggiunge lo stacchetto
+            for idx, traccia_path in enumerate(tracce_paths):
                 f.write(f"file '{traccia_path}'\n")
-                f.write(f"file '{silence_path}'\n")  # Aggiunge una pausa tra le tracce
+                if idx < len(tracce_paths) - 1:  # Aggiunge silenzio solo tra le tracce vocali
+                    f.write(f"file '{silence_path}'\n")
 
         # Comando per concatenare i file usando un file di lista
         concat_command = (
