@@ -93,11 +93,11 @@ async def monta_podcast(
         # Percorso per il file finale del podcast
         output_podcast_path = tempfile.mktemp(suffix=".mp3")
 
-        # Comando per aggiungere la musica di sottofondo fino alla durata delle tracce vocali con dissolvenza finale
+        # Comando per aggiungere la musica di sottofondo e terminare tutto con una dissolvenza
         final_command = (
             f"ffmpeg -y -i {concatenated_audio_path} -i {background_music_path} "
-            f"-filter_complex \"[1]volume=0.2,afade=out:st={durata_voci - 1}:d=1[audio];[0][audio]amix=inputs=2:duration=longest\" "
-            f"{output_podcast_path}"
+            f"-filter_complex \"[1]volume=0.2,afade=out:st={durata_voci - 1}:d=1[audio];[0][audio]amix=inputs=2:duration=shortest\" "
+            f"-t {durata_voci} {output_podcast_path}"
         )
 
         # Esegui il comando FFmpeg e cattura l'output
@@ -128,3 +128,4 @@ async def monta_podcast(
     except Exception as e:
         print("Errore:", str(e))
         raise HTTPException(status_code=500, detail=str(e))
+
