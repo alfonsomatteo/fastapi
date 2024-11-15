@@ -17,6 +17,13 @@ def convert_to_mp3(input_path: str) -> str:
     subprocess.run(convert_command, shell=True, check=True)
     return output_path
 
+def create_silence(duration_ms: int) -> str:
+    """Genera un file audio di silenzio della durata specificata in millisecondi."""
+    output_path = tempfile.mktemp(suffix=".mp3")
+    silence_command = f"ffmpeg -y -f lavfi -i anullsrc=r=48000:cl=stereo -t {duration_ms / 1000} {output_path}"
+    subprocess.run(silence_command, shell=True, check=True)
+    return output_path
+
 @app.post("/monta-podcast/")
 async def monta_podcast(
     background_tasks: BackgroundTasks,
@@ -51,16 +58,21 @@ async def monta_podcast(
             tracce_paths.append(traccia_path)
             temp_files.append(traccia_path)
 
-        # Concatenazione delle tracce vocali con lo stacchetto
+        # Genera un file di silenzio breve (500ms)
+        silence_path = create_silence(500)  # Durata in millisecondi
+        temp_files.append(silence_path)
+
+        # Concatenazione delle tracce vocali con lo stacchetto e i silenzi
         concatenated_audio_path = tempfile.mktemp(suffix=".mp3")
         concat_list_path = tempfile.mktemp(suffix=".txt")
         temp_files.append(concat_list_path)
         
-        # Creiamo un file di testo per la concatenazione
+        # Creiamo un file di testo per la concatenazione con pause tra le tracce
         with open(concat_list_path, "w") as f:
             f.write(f"file '{stacchetto_path}'\n")
             for traccia_path in tracce_paths:
                 f.write(f"file '{traccia_path}'\n")
+                f.write(f"file '{silence_path}'\n")  # Aggiunge una pausa tra le tracce
 
         # Comando per concatenare i file usando un file di lista
         concat_command = (
