@@ -22,32 +22,40 @@ async def monta_podcast(
 
     try:
         # Salva lo stacchetto in un file temporaneo
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_file:
-            temp_file.write(await stacchetto.read())
-            stacchetto_path = temp_file.name
-            temp_files.append(stacchetto_path)
+        stacchetto_path = tempfile.mktemp(suffix=".mp3")
+        with open(stacchetto_path, "wb") as f:
+            f.write(await stacchetto.read())
+        temp_files.append(stacchetto_path)
 
         # Salva la musica di sottofondo in un file temporaneo
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_file:
-            temp_file.write(await background_music.read())
-            background_music_path = temp_file.name
-            temp_files.append(background_music_path)
+        background_music_path = tempfile.mktemp(suffix=".mp3")
+        with open(background_music_path, "wb") as f:
+            f.write(await background_music.read())
+        temp_files.append(background_music_path)
 
         # Salva le tracce vocali in file temporanei
         tracce_paths = []
-        for idx, traccia in enumerate(tracce_vocali):
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_file:
-                temp_file.write(await traccia.read())
-                tracce_paths.append(temp_file.name)
-                temp_files.append(temp_file.name)
+        for traccia in tracce_vocali:
+            traccia_path = tempfile.mktemp(suffix=".mp3")
+            with open(traccia_path, "wb") as f:
+                f.write(await traccia.read())
+            tracce_paths.append(traccia_path)
+            temp_files.append(traccia_path)
 
-        # Concatenazione stacchetto e tracce vocali
-        tracce_input = "|".join([stacchetto_path] + tracce_paths)
+        # Concatenazione dello stacchetto e delle tracce vocali
         concatenated_audio_path = tempfile.mktemp(suffix=".mp3")
+        concat_list_path = tempfile.mktemp(suffix=".txt")
+        temp_files.append(concat_list_path)
         
-        # Comando per concatenare lo stacchetto e le tracce vocali
+        # Creiamo un file di testo per la concatenazione
+        with open(concat_list_path, "w") as f:
+            f.write(f"file '{stacchetto_path}'\n")
+            for traccia_path in tracce_paths:
+                f.write(f"file '{traccia_path}'\n")
+
+        # Comando per concatenare i file usando un file di lista
         concat_command = (
-            f"ffmpeg -y -i \"concat:{tracce_input}\" -acodec copy {concatenated_audio_path}"
+            f"ffmpeg -y -f concat -safe 0 -i {concat_list_path} -c copy {concatenated_audio_path}"
         )
         subprocess.run(concat_command, shell=True, check=True)
         temp_files.append(concatenated_audio_path)
@@ -90,5 +98,3 @@ async def monta_podcast(
     except Exception as e:
         print("Errore:", str(e))
         raise
-
-
