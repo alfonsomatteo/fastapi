@@ -8,7 +8,7 @@ app = FastAPI()
 # Endpoint di prova per verificare che il server sia in esecuzione
 @app.get("/")
 async def root():
-    return {"greeting": "Hello, World!", "message": "Welcome to FastAPI!"}
+    return {"greeting": "Hello, World!", "message": "Welcome to FastAPI panico!"}
 
 # Endpoint che monta il podcast con lo stacchetto iniziale, la traccia di sottofondo e le tracce vocali
 @app.post("/monta-podcast/")
