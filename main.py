@@ -5,37 +5,62 @@ import tempfile
 
 app = FastAPI()
 
-# Endpoint di prova per verificare che il server sia attivo
+# Endpoint di prova per verificare che il server sia in esecuzione
 @app.get("/")
 async def root():
     return {"greeting": "Hello, World!", "message": "Welcome to FastAPI!"}
 
-# Endpoint che utilizza FFmpeg per processare un file audio
-@app.post("/processa-audio/")
-async def processa_audio(file: UploadFile = File(...)):
-    # Salva il file audio caricato temporaneamente
+# Endpoint che monta il podcast con lo stacchetto iniziale, la traccia di sottofondo e le tracce vocali
+@app.post("/monta-podcast/")
+async def monta_podcast(
+    stacchetto: UploadFile = File(...),
+    background_music: UploadFile = File(...),
+    tracce_vocali: list[UploadFile] = File(...)
+):
+    # Percorsi temporanei per i file caricati
+    temp_files = []
+
+    # Salva lo stacchetto iniziale in un file temporaneo
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_file:
-        temp_file.write(await file.read())
-        temp_file_path = temp_file.name
+        temp_file.write(await stacchetto.read())
+        stacchetto_path = temp_file.name
+        temp_files.append(stacchetto_path)
 
-    # Definisci il percorso di output
-    output_file_path = temp_file_path.replace(".mp3", "_output.mp3")
+    # Salva la musica di sottofondo in un file temporaneo
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_file:
+        temp_file.write(await background_music.read())
+        background_music_path = temp_file.name
+        temp_files.append(background_music_path)
 
-    # Comando FFmpeg per modificare l'audio (esempio: aumento del volume)
-    comando = [
-        "ffmpeg",
-        "-i", temp_file_path,
-        "-af", "volume=1.5",
-        output_file_path
-    ]
+    # Salva le tracce vocali in file temporanei
+    tracce_paths = []
+    for idx, traccia in enumerate(tracce_vocali):
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_file:
+            temp_file.write(await traccia.read())
+            tracce_paths.append(temp_file.name)
+            temp_files.append(temp_file.name)
+
+    # Combina lo stacchetto con le tracce vocali, mantenendo la musica di sottofondo
+    output_podcast_path = tempfile.mktemp(suffix=".mp3")
+    temp_files.append(output_podcast_path)
+
+    # Comando FFmpeg per combinare i file audio
+    inputs = " ".join([f"-i {path}" for path in [stacchetto_path] + tracce_paths])
+    filter_complex = f"[0:a] [1:a] amerge=inputs=2 [bg];"  # Background iniziale e traccia sottofondo
+    for i in range(len(tracce_paths)):
+        filter_complex += f"[{i+2}:a] [bg] amix=inputs=2 [bg];"
+    final_map = f"-map [bg] {output_podcast_path}"
+
+    comando = f"ffmpeg {inputs} -i {background_music_path} -filter_complex \"{filter_complex}\" {final_map}"
 
     try:
-        subprocess.run(comando, check=True)
-        return {"message": "Processamento completato con successo."}
+        subprocess.run(comando, shell=True, check=True)
+        return {"message": "Podcast montato con successo.", "file_path": output_podcast_path}
     except subprocess.CalledProcessError as e:
-        return {"error": f"Errore durante il processamento: {e}"}
+        return {"error": f"Errore durante il montaggio: {e}"}
     finally:
-        # Rimuovi i file temporanei
-        os.remove(temp_file_path)
-        if os.path.exists(output_file_path):
-            os.remove(output_file_path)
+        # Rimuovi tutti i file temporanei
+        for path in temp_files:
+            if os.path.exists(path):
+                os.remove(path)
+
