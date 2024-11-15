@@ -44,13 +44,13 @@ async def monta_podcast(
     temp_files.append(output_podcast_path)
 
     # Comando FFmpeg per combinare i file audio
-    inputs = " ".join([f"-i {path}" for path in [stacchetto_path] + tracce_paths])
+    inputs = " ".join([f"-i {path}" for path in [stacchetto_path] + tracce_paths + [background_music_path]])
     filter_complex = f"[0:a] [1:a] amerge=inputs=2 [bg];"
     for i in range(len(tracce_paths)):
-        filter_complex += f"[{i+2}:a] [bg] amix=inputs=2 [bg];"
+        filter_complex += f"[{i+2}:a][bg]amix=inputs=2:duration=longest[bg];"
     final_map = f"-map [bg] {output_podcast_path}"
 
-    comando = f"ffmpeg {inputs} -i {background_music_path} -filter_complex \"{filter_complex}\" {final_map}"
+    comando = f"ffmpeg {inputs} -filter_complex \"{filter_complex}\" {final_map}"
 
     # Esegui il comando FFmpeg
     try:
