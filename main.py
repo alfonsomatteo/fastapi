@@ -24,6 +24,12 @@ def create_silence(duration_ms: int) -> str:
     subprocess.run(silence_command, shell=True, check=True)
     return output_path
 
+def get_audio_duration(file_path: str) -> float:
+    """Ritorna la durata dell'audio in secondi."""
+    command = f"ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 {file_path}"
+    result = subprocess.run(command, shell=True, capture_output=True, text=True)
+    return float(result.stdout.strip())
+
 @app.post("/monta-podcast/")
 async def monta_podcast(
     background_tasks: BackgroundTasks,
@@ -81,13 +87,16 @@ async def monta_podcast(
         subprocess.run(concat_command, shell=True, check=True)
         temp_files.append(concatenated_audio_path)
 
+        # Calcola la durata totale delle tracce vocali concatenate
+        durata_voci = get_audio_duration(concatenated_audio_path) + 1  # Aggiungi 1 secondo per la dissolvenza finale
+
         # Percorso per il file finale del podcast
         output_podcast_path = tempfile.mktemp(suffix=".mp3")
 
-        # Comando per aggiungere la musica di sottofondo con dissolvenza alla fine
+        # Comando per aggiungere la musica di sottofondo fino alla durata delle tracce vocali con dissolvenza finale
         final_command = (
             f"ffmpeg -y -i {concatenated_audio_path} -i {background_music_path} "
-            f"-filter_complex \"[1]afade=t=out:st=90:d=5,volume=0.2[audio];[0][audio]amix=inputs=2:duration=longest\" "
+            f"-filter_complex \"[1]volume=0.2,afade=out:st={durata_voci - 1}:d=1[audio];[0][audio]amix=inputs=2:duration=longest\" "
             f"{output_podcast_path}"
         )
 
