@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse
 import subprocess
 import os
@@ -6,12 +6,10 @@ import tempfile
 
 app = FastAPI()
 
-# Endpoint di prova per verificare che il server sia in esecuzione
 @app.get("/")
 async def root():
     return {"greeting": "Hello, World!", "message": "Welcome to FastAPI!"}
 
-# Endpoint che monta il podcast con lo stacchetto iniziale, la traccia di sottofondo e le tracce vocali
 @app.post("/monta-podcast/")
 async def monta_podcast(
     stacchetto: UploadFile = File(...),
@@ -21,7 +19,7 @@ async def monta_podcast(
     # Percorsi temporanei per i file caricati
     temp_files = []
 
-    # Salva lo stacchetto iniziale in un file temporaneo
+    # Salva lo stacchetto in un file temporaneo
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_file:
         temp_file.write(await stacchetto.read())
         stacchetto_path = temp_file.name
@@ -41,28 +39,32 @@ async def monta_podcast(
             tracce_paths.append(temp_file.name)
             temp_files.append(temp_file.name)
 
-    # Combina lo stacchetto con le tracce vocali, mantenendo la musica di sottofondo
+    # Percorso per il file finale del podcast
     output_podcast_path = tempfile.mktemp(suffix=".mp3")
     temp_files.append(output_podcast_path)
 
     # Comando FFmpeg per combinare i file audio
     inputs = " ".join([f"-i {path}" for path in [stacchetto_path] + tracce_paths])
-    filter_complex = f"[0:a] [1:a] amerge=inputs=2 [bg];"  # Background iniziale e traccia sottofondo
+    filter_complex = f"[0:a] [1:a] amerge=inputs=2 [bg];"
     for i in range(len(tracce_paths)):
         filter_complex += f"[{i+2}:a] [bg] amix=inputs=2 [bg];"
     final_map = f"-map [bg] {output_podcast_path}"
 
     comando = f"ffmpeg {inputs} -i {background_music_path} -filter_complex \"{filter_complex}\" {final_map}"
 
+    # Esegui il comando FFmpeg
     try:
-        subprocess.run(comando, shell=True, check=True)
+        result = subprocess.run(comando, shell=True, check=True)
+        # Controlla se il file è stato effettivamente creato
+        if not os.path.exists(output_podcast_path):
+            raise HTTPException(status_code=500, detail="Errore nella generazione del file audio finale.")
+
         # Restituisci il file audio finale come risposta
         return FileResponse(output_podcast_path, media_type='audio/mpeg', filename="podcast_finale.mp3")
     except subprocess.CalledProcessError as e:
-        return {"error": f"Errore durante il montaggio: {e}"}
+        raise HTTPException(status_code=500, detail=f"Errore durante il montaggio: {e}")
     finally:
         # Rimuovi tutti i file temporanei
         for path in temp_files:
             if os.path.exists(path):
                 os.remove(path)
-
