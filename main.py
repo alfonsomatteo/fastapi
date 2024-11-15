@@ -1,4 +1,5 @@
 from fastapi import FastAPI, UploadFile, File
+from fastapi.responses import FileResponse
 import subprocess
 import os
 import tempfile
@@ -8,7 +9,7 @@ app = FastAPI()
 # Endpoint di prova per verificare che il server sia in esecuzione
 @app.get("/")
 async def root():
-    return {"greeting": "Hello, World!", "message": "Welcome to FastAPI panico!"}
+    return {"greeting": "Hello, World!", "message": "Welcome to FastAPI!"}
 
 # Endpoint che monta il podcast con lo stacchetto iniziale, la traccia di sottofondo e le tracce vocali
 @app.post("/monta-podcast/")
@@ -55,7 +56,8 @@ async def monta_podcast(
 
     try:
         subprocess.run(comando, shell=True, check=True)
-        return {"message": "Podcast montato con successo.", "file_path": output_podcast_path}
+        # Restituisci il file audio finale come risposta
+        return FileResponse(output_podcast_path, media_type='audio/mpeg', filename="podcast_finale.mp3")
     except subprocess.CalledProcessError as e:
         return {"error": f"Errore durante il montaggio: {e}"}
     finally:
