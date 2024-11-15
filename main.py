@@ -52,16 +52,23 @@ async def monta_podcast(
 
     comando = f"ffmpeg {inputs} -filter_complex \"{filter_complex}\" {final_map}"
 
-    # Esegui il comando FFmpeg
+    # Esegui il comando FFmpeg e cattura l'output
     try:
-        result = subprocess.run(comando, shell=True, check=True)
+        result = subprocess.run(comando, shell=True, check=True, text=True, capture_output=True)
+        print("FFmpeg output:", result.stdout)  # Log dell'output di FFmpeg
+        print("FFmpeg error (if any):", result.stderr)
+
         # Controlla se il file è stato effettivamente creato
         if not os.path.exists(output_podcast_path):
+            print("Errore: Il file di output non esiste.")
             raise HTTPException(status_code=500, detail="Errore nella generazione del file audio finale.")
 
+        print("File generato con successo:", output_podcast_path)
+        
         # Restituisci il file audio finale come risposta
         return FileResponse(output_podcast_path, media_type='audio/mpeg', filename="podcast_finale.mp3")
     except subprocess.CalledProcessError as e:
+        print("Errore durante il comando FFmpeg:", e.stderr)
         raise HTTPException(status_code=500, detail=f"Errore durante il montaggio: {e}")
     finally:
         # Rimuovi tutti i file temporanei
