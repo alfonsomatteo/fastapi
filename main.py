@@ -1,4 +1,5 @@
 from fastapi import FastAPI, UploadFile, File
+from fastapi.responses import FileResponse
 import subprocess
 import os
 import tempfile
@@ -23,7 +24,8 @@ async def process_podcast(stacchetto: UploadFile = File(...), background_music: 
         final_output_path = os.path.join("/tmp", next(tempfile._get_candidate_names()) + ".mp3")
         apply_background_with_fadeout(stacchetto_path, background_music_path, combined_voci_path, final_output_path)
 
-        return {"message": "Podcast montato con successo.", "file_path": final_output_path}
+        # Restituisce il file audio finale come risposta scaricabile
+        return FileResponse(final_output_path, filename="podcast_finale.mp3", media_type="audio/mpeg")
 
     except Exception as e:
         return {"detail": f"Errore durante il montaggio: {e}"}
@@ -56,3 +58,4 @@ def apply_background_with_fadeout(stacchetto_path, background_music_path, combin
         "[1]afade=t=out:st=90:d=5[bg];[0][bg]amix=inputs=2:duration=longest:dropout_transition=3",
         "-c:a", "libmp3lame", output_path
     ], check=True)
+
