@@ -43,16 +43,16 @@ async def monta_podcast(
 
         # Percorso per il file finale del podcast
         output_podcast_path = tempfile.mktemp(suffix=".mp3")
-        # Non aggiungiamo il file di output a temp_files perché lo gestiremo separatamente
 
-        # Comando FFmpeg per combinare i file audio
-        inputs = " ".join([f"-i {path}" for path in [stacchetto_path] + tracce_paths + [background_music_path]])
-        filter_complex = f"[0:a][{len(tracce_paths)+1}:a]amerge=inputs=2[bg];"
-        for i in range(len(tracce_paths)):
-            filter_complex += f"[{i+1}:a][bg]amix=inputs=2:duration=longest[bg];"
-        final_map = f"-map [bg] {output_podcast_path}"
-
-        comando = f"ffmpeg {inputs} -filter_complex \"{filter_complex}\" {final_map}"
+        # Comando FFmpeg per concatenare le tracce vocali e lo stacchetto, e aggiungere il background
+        tracce_input = "|".join([stacchetto_path] + tracce_paths)  # Concatenazione delle tracce
+        comando = (
+            f"ffmpeg -y -i {background_music_path} "
+            f"-filter_complex \""
+            f'concat=n={len(tracce_paths) + 1}:v=0:a=1[audio];'  # Concatenazione delle tracce
+            f'[0][audio]amix=inputs=2:duration=longest:dropout_transition=2,volume=0.2[aout]'  # Aggiunge il background a volume basso
+            f"\" -map \"[aout]\" {output_podcast_path}"
+        )
 
         # Esegui il comando FFmpeg e cattura l'output
         result = subprocess.run(comando, shell=True, check=True, text=True, capture_output=True)
@@ -82,3 +82,4 @@ async def monta_podcast(
     except Exception as e:
         print("Errore:", str(e))
         raise
+
