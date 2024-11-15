@@ -10,6 +10,13 @@ app = FastAPI()
 async def root():
     return {"greeting": "Hello, World!", "message": "Welcome to FastAPI!"}
 
+def convert_to_mp3(input_path: str) -> str:
+    """Converte un file audio in formato MP3 per assicurare compatibilità."""
+    output_path = tempfile.mktemp(suffix=".mp3")
+    convert_command = f"ffmpeg -y -i {input_path} -acodec libmp3lame -ar 48000 -ac 2 {output_path}"
+    subprocess.run(convert_command, shell=True, check=True)
+    return output_path
+
 @app.post("/monta-podcast/")
 async def monta_podcast(
     background_tasks: BackgroundTasks,
@@ -17,32 +24,34 @@ async def monta_podcast(
     background_music: UploadFile = File(...),
     tracce_vocali: list[UploadFile] = File(...)
 ):
-    # Percorsi temporanei per i file caricati
     temp_files = []
 
     try:
-        # Salva lo stacchetto in un file temporaneo
+        # Salva e converte lo stacchetto in MP3
         stacchetto_path = tempfile.mktemp(suffix=".mp3")
         with open(stacchetto_path, "wb") as f:
             f.write(await stacchetto.read())
+        stacchetto_path = convert_to_mp3(stacchetto_path)
         temp_files.append(stacchetto_path)
 
-        # Salva la musica di sottofondo in un file temporaneo
+        # Salva e converte la musica di sottofondo in MP3
         background_music_path = tempfile.mktemp(suffix=".mp3")
         with open(background_music_path, "wb") as f:
             f.write(await background_music.read())
+        background_music_path = convert_to_mp3(background_music_path)
         temp_files.append(background_music_path)
 
-        # Salva le tracce vocali in file temporanei
+        # Salva e converte le tracce vocali in MP3
         tracce_paths = []
         for traccia in tracce_vocali:
             traccia_path = tempfile.mktemp(suffix=".mp3")
             with open(traccia_path, "wb") as f:
                 f.write(await traccia.read())
+            traccia_path = convert_to_mp3(traccia_path)
             tracce_paths.append(traccia_path)
             temp_files.append(traccia_path)
 
-        # Concatenazione dello stacchetto e delle tracce vocali
+        # Concatenazione delle tracce vocali con lo stacchetto
         concatenated_audio_path = tempfile.mktemp(suffix=".mp3")
         concat_list_path = tempfile.mktemp(suffix=".txt")
         temp_files.append(concat_list_path)
