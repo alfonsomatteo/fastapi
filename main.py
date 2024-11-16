@@ -3,6 +3,7 @@ from fastapi.responses import FileResponse
 import subprocess
 import os
 import tempfile
+from typing import Optional
 
 app = FastAPI()
 
@@ -35,9 +36,19 @@ async def monta_podcast(
     background_tasks: BackgroundTasks,
     stacchetto: UploadFile = File(...),
     background_music: UploadFile = File(...),
-    tracce_vocali: list[UploadFile] = File(...)
+    traccia_vocale1: Optional[UploadFile] = File(None),
+    traccia_vocale2: Optional[UploadFile] = File(None),
+    traccia_vocale3: Optional[UploadFile] = File(None),
+    traccia_vocale4: Optional[UploadFile] = File(None),
+    traccia_vocale5: Optional[UploadFile] = File(None),
+    traccia_vocale6: Optional[UploadFile] = File(None),
+    traccia_vocale7: Optional[UploadFile] = File(None),
+    traccia_vocale8: Optional[UploadFile] = File(None),
+    traccia_vocale9: Optional[UploadFile] = File(None),
+    traccia_vocale10: Optional[UploadFile] = File(None),
 ):
     temp_files = []
+    tracce_paths = []
 
     try:
         # Salva e converte lo stacchetto in MP3
@@ -54,18 +65,25 @@ async def monta_podcast(
         background_music_path = convert_to_mp3(background_music_path)
         temp_files.append(background_music_path)
 
-        # Salva e converte le tracce vocali in MP3
-        tracce_paths = []
+        # Lista delle tracce vocali, aggiungi solo le tracce fornite
+        tracce_vocali = [
+            traccia_vocale1, traccia_vocale2, traccia_vocale3, traccia_vocale4,
+            traccia_vocale5, traccia_vocale6, traccia_vocale7, traccia_vocale8,
+            traccia_vocale9, traccia_vocale10
+        ]
+
+        # Salva e converte ogni traccia vocale fornita in MP3
         for traccia in tracce_vocali:
-            traccia_path = tempfile.mktemp(suffix=".mp3")
-            with open(traccia_path, "wb") as f:
-                f.write(await traccia.read())
-            traccia_path = convert_to_mp3(traccia_path)
-            tracce_paths.append(traccia_path)
-            temp_files.append(traccia_path)
+            if traccia is not None:
+                traccia_path = tempfile.mktemp(suffix=".mp3")
+                with open(traccia_path, "wb") as f:
+                    f.write(await traccia.read())
+                traccia_path = convert_to_mp3(traccia_path)
+                tracce_paths.append(traccia_path)
+                temp_files.append(traccia_path)
 
         # Genera un file di silenzio breve (500ms) tra le tracce vocali
-        silence_path = create_silence(500)  # Durata in millisecondi
+        silence_path = create_silence(500)
         temp_files.append(silence_path)
 
         # Concatenazione delle tracce vocali con lo stacchetto e i silenzi
@@ -101,17 +119,8 @@ async def monta_podcast(
             f"-t {durata_voci} {output_podcast_path}"
         )
 
-        # Esegui il comando FFmpeg e cattura l'output
-        result = subprocess.run(final_command, shell=True, check=True, text=True, capture_output=True)
-        print("FFmpeg output:", result.stdout)
-        print("FFmpeg error (if any):", result.stderr)
-
-        # Controlla se il file è stato effettivamente creato
-        if not os.path.exists(output_podcast_path):
-            print("Errore: Il file di output non esiste.")
-            raise HTTPException(status_code=500, detail="Errore nella generazione del file audio finale.")
-
-        print("File generato con successo:", output_podcast_path)
+        # Esegui il comando FFmpeg
+        subprocess.run(final_command, shell=True, check=True)
         
         # Pianifica la rimozione del file di output dopo l'invio della risposta
         background_tasks.add_task(os.remove, output_podcast_path)
@@ -124,9 +133,6 @@ async def monta_podcast(
         return FileResponse(output_podcast_path, media_type='audio/mpeg', filename="podcast_finale.mp3")
 
     except subprocess.CalledProcessError as e:
-        print("Errore durante il comando FFmpeg:", e.stderr)
         raise HTTPException(status_code=500, detail=f"Errore durante il montaggio: {e}")
     except Exception as e:
-        print("Errore:", str(e))
         raise HTTPException(status_code=500, detail=str(e))
-
