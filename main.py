@@ -65,7 +65,7 @@ async def monta_podcast(
         background_music_path = convert_to_mp3(background_music_path)
         temp_files.append(background_music_path)
 
-        # Lista delle tracce vocali, aggiungi solo le tracce fornite
+        # Lista delle tracce vocali
         tracce_vocali = [
             traccia_vocale1, traccia_vocale2, traccia_vocale3, traccia_vocale4,
             traccia_vocale5, traccia_vocale6, traccia_vocale7, traccia_vocale8,
@@ -91,7 +91,7 @@ async def monta_podcast(
         concat_list_path = tempfile.mktemp(suffix=".txt")
         temp_files.append(concat_list_path)
 
-        # Creiamo un file di testo per la concatenazione senza pausa dopo lo stacchetto
+        # Creiamo un file di testo per la concatenazione
         with open(concat_list_path, "w") as f:
             f.write(f"file '{stacchetto_path}'\n")  # Aggiunge lo stacchetto
             for idx, traccia_path in enumerate(tracce_paths):
@@ -107,21 +107,21 @@ async def monta_podcast(
         temp_files.append(concatenated_audio_path)
 
         # Calcola la durata totale delle tracce vocali concatenate
-        durata_voci = get_audio_duration(concatenated_audio_path) + 1  # Aggiungi 1 secondo per la dissolvenza finale
+        durata_voci = get_audio_duration(concatenated_audio_path) + 1.5  # Aggiungi 1.5 secondi per la dissolvenza finale
 
         # Percorso per il file finale del podcast
         output_podcast_path = tempfile.mktemp(suffix=".mp3")
 
-        # Comando per aggiungere la musica di sottofondo e terminare tutto con una dissolvenza
+        # Comando per gestire il loop della musica di sottofondo e dissolvenza
         final_command = (
-            f"ffmpeg -y -i {concatenated_audio_path} -i {background_music_path} "
-            f"-filter_complex \"[1]volume=0.2,afade=out:st={durata_voci - 1}:d=1[audio];[0][audio]amix=inputs=2:duration=shortest\" "
-            f"-t {durata_voci} {output_podcast_path}"
+            f"ffmpeg -y -stream_loop -1 -i {background_music_path} -i {concatenated_audio_path} "
+            f"-filter_complex \"[0]volume=0.1,afade=t=in:st=0:d=2,afade=t=out:st={durata_voci - 1.5}:d=1.5[bg];"
+            f"[1][bg]amix=inputs=2:duration=shortest\" -t {durata_voci} {output_podcast_path}"
         )
 
         # Esegui il comando FFmpeg
         subprocess.run(final_command, shell=True, check=True)
-        
+
         # Pianifica la rimozione del file di output dopo l'invio della risposta
         background_tasks.add_task(os.remove, output_podcast_path)
 
@@ -136,3 +136,4 @@ async def monta_podcast(
         raise HTTPException(status_code=500, detail=f"Errore durante il montaggio: {e}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
