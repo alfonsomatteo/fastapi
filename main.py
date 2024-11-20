@@ -137,33 +137,47 @@ async def monta_podcast(
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/video-transcription-summary/")
-async def video_transcription_summary(file: UploadFile = File(...)):
+async def video_transcription_summary(video: UploadFile = File(...)):
+    temp_files = []
     try:
-        # Salva il file video
+        # Salva il video
         video_path = tempfile.mktemp(suffix=".mp4")
         with open(video_path, "wb") as f:
-            f.write(await file.read())
+            f.write(await video.read())
+        temp_files.append(video_path)
 
-        # Estrae l'audio dal video
+        # Estrai l'audio dal video
         audio_path = tempfile.mktemp(suffix=".mp3")
         extract_audio_command = f"ffmpeg -y -i {video_path} -q:a 0 -map a {audio_path}"
         subprocess.run(extract_audio_command, shell=True, check=True)
+        temp_files.append(audio_path)
 
-        # Trascrivi l'audio usando Whisper
-        import whisper
+        # Usa Whisper per la trascrizione
         model = whisper.load_model("base")
         result = model.transcribe(audio_path)
         transcription = result["text"]
 
-        # Usa OpenAI per creare una sintesi
-        response = openai.Completion.create(
-            model="text-davinci-003",
-            prompt=f"Riassumi il seguente testo in modo esaustivo:\n\n{transcription}",
-            temperature=0.7,
-            max_tokens=300
+        # Usa OpenAI per generare una sintesi
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "Sei un assistente che riassume trascrizioni video in modo chiaro ed esaustivo."},
+                {"role": "user", "content": transcription}
+            ],
+            max_tokens=500,
+            temperature=0.7
         )
-        summary = response["choices"][0]["text"].strip()
+        summary = response["choices"][0]["message"]["content"].strip()
 
+        # Pianifica la rimozione dei file temporanei
+        for path in temp_files:
+            os.remove(path)
+
+        # Restituisci il risultato
         return {"transcription": transcription, "summary": summary}
+
     except Exception as e:
+        for path in temp_files:
+            if os.path.exists(path):
+                os.remove(path)
         raise HTTPException(status_code=500, detail=str(e))
