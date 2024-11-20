@@ -133,18 +133,29 @@ async def monta_podcast(
             f.write(f"file '{stacchetto_path}'\n")
             for traccia_path in tracce_paths:
                 f.write(f"file '{traccia_path}'\n")
-            f.write(f"file '{background_music_path}'\n")
 
         concat_command = f"ffmpeg -y -f concat -safe 0 -i {concat_list_path} -c copy {concatenated_audio_path}"
         subprocess.run(concat_command, shell=True, check=True)
         temp_files.append(concatenated_audio_path)
 
-        # Ritorna il file audio generato
+        # Calcola la durata totale delle tracce vocali
+        durata_voci = get_audio_duration(concatenated_audio_path)
+
+        # Percorso per il file finale del podcast
         output_podcast_path = tempfile.mktemp(suffix=".mp3")
-        final_command = f"ffmpeg -y -i {concatenated_audio_path} -i {background_music_path} -filter_complex \"amix=inputs=2\" {output_podcast_path}"
+
+        # Comando per gestire il loop dell'audio di sottofondo e applicare il fade
+        final_command = (
+            f"ffmpeg -y -stream_loop -1 -i {background_music_path} -i {concatenated_audio_path} "
+            f"-filter_complex \"[0]volume=0.1,afade=t=out:st={durata_voci}:d=3[bg];"
+            f"[1][bg]amix=inputs=2:duration=shortest\" -t {durata_voci + 3} {output_podcast_path}"
+        )
         subprocess.run(final_command, shell=True, check=True)
 
+        # Pianifica la rimozione del file di output dopo l'invio della risposta
         background_tasks.add_task(os.remove, output_podcast_path)
+
+        # Pianifica la rimozione dei file temporanei
         for path in temp_files:
             background_tasks.add_task(os.remove, path)
 
