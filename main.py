@@ -163,7 +163,7 @@ async def transcribe_video(file: UploadFile = File(...)):
 
         # Genera una sintesi con OpenAI
         response = openai.Completion.create(
-            engine="text-davinci-003",
+            engine="gpt-4o-mini",
             prompt=f"Fornisci una sintesi dettagliata del seguente testo:\n{transcription}",
             max_tokens=500,
             temperature=0.7
