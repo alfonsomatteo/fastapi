@@ -4,17 +4,17 @@ import subprocess
 import os
 import tempfile
 from typing import Optional
-import openai
 import whisper
+import openai
+
+# Configura la tua chiave OpenAI
+openai.api_key = "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"
 
 app = FastAPI()
 
-# Configura la chiave API di OpenAI
-openai.api_key = "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"
-
 @app.get("/")
 async def root():
-    return {"greeting": "Hello, World!", "message": "Welcome to FastAPI!"}
+    return {"message": "Welcome to FastAPI!"}
 
 def convert_to_mp3(input_path: str) -> str:
     output_path = tempfile.mktemp(suffix=".mp3")
@@ -122,39 +122,36 @@ async def monta_podcast(
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/video-extraction/")
-async def video_extraction(video: UploadFile = File(...)):
-    temp_files = []
+async def video_extraction(file: UploadFile = File(...)):
+    temp_audio_path = tempfile.mktemp(suffix=".mp3")
+    temp_video_path = tempfile.mktemp(suffix=".mp4")
 
     try:
-        video_path = tempfile.mktemp(suffix=".mp4")
-        with open(video_path, "wb") as f:
-            f.write(await video.read())
-        temp_files.append(video_path)
+        with open(temp_video_path, "wb") as f:
+            f.write(await file.read())
 
-        audio_path = tempfile.mktemp(suffix=".mp3")
-        extract_audio_command = f"ffmpeg -y -i {video_path} -q:a 0 -map a {audio_path}"
-        subprocess.run(extract_audio_command, shell=True, check=True)
-        temp_files.append(audio_path)
+        convert_command = f"ffmpeg -y -i {temp_video_path} -q:a 0 -map a {temp_audio_path}"
+        subprocess.run(convert_command, shell=True, check=True)
 
         model = whisper.load_model("base")
-        result = model.transcribe(audio_path)
+        result = model.transcribe(temp_audio_path)
         transcript_text = result["text"]
 
-        openai_response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "Riassumi il seguente testo estratto da un video."},
-                {"role": "user", "content": transcript_text},
-            ],
+        response = openai.Completion.create(
+            engine="text-davinci-003",
+            prompt=f"Riassumi il seguente testo:\n\n{transcript_text}",
+            max_tokens=200,
         )
-        summary = openai_response["choices"][0]["message"]["content"]
+        summary = response["choices"][0]["text"].strip()
 
-        for path in temp_files:
-            os.remove(path)
-
-        return {"status": "success", "transcript_summary": summary}
+        return {"transcript": transcript_text, "summary": summary}
 
     except subprocess.CalledProcessError as e:
-        raise HTTPException(status_code=500, detail=f"Errore durante il comando FFmpeg: {e}")
+        raise HTTPException(status_code=500, detail=f"Errore durante l'elaborazione del video: {e}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if os.path.exists(temp_audio_path):
+            os.remove(temp_audio_path)
+        if os.path.exists(temp_video_path):
+            os.remove(temp_video_path)
