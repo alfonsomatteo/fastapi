@@ -3,34 +3,35 @@ from fastapi.responses import FileResponse
 import subprocess
 import os
 import tempfile
-import openai
 from typing import Optional
-
-# Imposta la chiave API di OpenAI dalle variabili d'ambiente
-openai.api_key = os.getenv("OPENAI_API_KEY")
+import whisper
+import openai
 
 app = FastAPI()
+
+# Configura la tua chiave API di OpenAI
+openai.api_key = os.getenv("OPENAI_API_KEY")  # Usa variabili d'ambiente per maggiore sicurezza
 
 @app.get("/")
 async def root():
     return {"greeting": "Hello, World!", "message": "Welcome to FastAPI!"}
 
-# Funzione per convertire audio in MP3
 def convert_to_mp3(input_path: str) -> str:
+    """Converte un file audio in formato MP3 per assicurare compatibilità."""
     output_path = tempfile.mktemp(suffix=".mp3")
     convert_command = f"ffmpeg -y -i {input_path} -acodec libmp3lame -ar 48000 -ac 2 {output_path}"
     subprocess.run(convert_command, shell=True, check=True)
     return output_path
 
-# Funzione per creare silenzio
 def create_silence(duration_ms: int) -> str:
+    """Genera un file audio di silenzio della durata specificata in millisecondi."""
     output_path = tempfile.mktemp(suffix=".mp3")
     silence_command = f"ffmpeg -y -f lavfi -i anullsrc=r=48000:cl=stereo -t {duration_ms / 1000} {output_path}"
     subprocess.run(silence_command, shell=True, check=True)
     return output_path
 
-# Funzione per calcolare la durata di un file audio
 def get_audio_duration(file_path: str) -> float:
+    """Ritorna la durata dell'audio in secondi."""
     command = f"ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 {file_path}"
     result = subprocess.run(command, shell=True, capture_output=True, text=True)
     return float(result.stdout.strip())
@@ -97,14 +98,16 @@ async def monta_podcast(
 
         # Creiamo un file di testo per la concatenazione
         with open(concat_list_path, "w") as f:
-            f.write(f"file '{stacchetto_path}'\n")
+            f.write(f"file '{stacchetto_path}'\n")  # Aggiunge lo stacchetto
             for idx, traccia_path in enumerate(tracce_paths):
                 f.write(f"file '{traccia_path}'\n")
                 if idx < len(tracce_paths) - 1:  # Aggiunge silenzio solo tra le tracce vocali
                     f.write(f"file '{silence_path}'\n")
 
         # Comando per concatenare i file usando un file di lista
-        concat_command = f"ffmpeg -y -f concat -safe 0 -i {concat_list_path} -c copy {concatenated_audio_path}"
+        concat_command = (
+            f"ffmpeg -y -f concat -safe 0 -i {concat_list_path} -c copy {concatenated_audio_path}"
+        )
         subprocess.run(concat_command, shell=True, check=True)
         temp_files.append(concatenated_audio_path)
 
@@ -120,6 +123,8 @@ async def monta_podcast(
             f"-filter_complex \"[0]volume=0.1,afade=t=in:st=0:d=2,afade=t=out:st={durata_voci - 1.5}:d=1.5[bg];"
             f"[1][bg]amix=inputs=2:duration=shortest\" -t {durata_voci} {output_podcast_path}"
         )
+
+        # Esegui il comando FFmpeg
         subprocess.run(final_command, shell=True, check=True)
 
         # Pianifica la rimozione del file di output dopo l'invio della risposta
@@ -129,6 +134,7 @@ async def monta_podcast(
         for path in temp_files:
             background_tasks.add_task(os.remove, path)
 
+        # Restituisci il file audio finale come risposta
         return FileResponse(output_podcast_path, media_type='audio/mpeg', filename="podcast_finale.mp3")
 
     except subprocess.CalledProcessError as e:
@@ -136,48 +142,40 @@ async def monta_podcast(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/video-transcription-summary/")
-async def video_transcription_summary(video: UploadFile = File(...)):
-    temp_files = []
+@app.post("/transcribe-video/")
+async def transcribe_video(file: UploadFile = File(...)):
     try:
-        # Salva il video
-        video_path = tempfile.mktemp(suffix=".mp4")
-        with open(video_path, "wb") as f:
-            f.write(await video.read())
-        temp_files.append(video_path)
+        # Salva il file video temporaneamente
+        temp_video_path = tempfile.mktemp(suffix=".mp4")
+        with open(temp_video_path, "wb") as f:
+            f.write(await file.read())
 
         # Estrai l'audio dal video
-        audio_path = tempfile.mktemp(suffix=".mp3")
-        extract_audio_command = f"ffmpeg -y -i {video_path} -q:a 0 -map a {audio_path}"
+        temp_audio_path = tempfile.mktemp(suffix=".mp3")
+        extract_audio_command = f"ffmpeg -y -i {temp_video_path} -q:a 0 -map a {temp_audio_path}"
         subprocess.run(extract_audio_command, shell=True, check=True)
-        temp_files.append(audio_path)
 
-        # Usa Whisper per la trascrizione
+        # Carica il modello Whisper
         model = whisper.load_model("base")
-        result = model.transcribe(audio_path)
-        transcription = result["text"]
 
-        # Usa OpenAI per generare una sintesi
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "Sei un assistente che riassume trascrizioni video in modo chiaro ed esaustivo."},
-                {"role": "user", "content": transcription}
-            ],
+        # Trascrivi l'audio
+        transcription = model.transcribe(temp_audio_path)["text"]
+
+        # Genera una sintesi con OpenAI
+        response = openai.Completion.create(
+            engine="text-davinci-003",
+            prompt=f"Fornisci una sintesi dettagliata del seguente testo:\n{transcription}",
             max_tokens=500,
             temperature=0.7
         )
-        summary = response["choices"][0]["message"]["content"].strip()
+        summary = response["choices"][0]["text"].strip()
 
-        # Pianifica la rimozione dei file temporanei
-        for path in temp_files:
-            os.remove(path)
+        # Rimuovi i file temporanei
+        os.remove(temp_video_path)
+        os.remove(temp_audio_path)
 
-        # Restituisci il risultato
         return {"transcription": transcription, "summary": summary}
 
     except Exception as e:
-        for path in temp_files:
-            if os.path.exists(path):
-                os.remove(path)
         raise HTTPException(status_code=500, detail=str(e))
+
