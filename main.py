@@ -3,31 +3,33 @@ from fastapi.responses import FileResponse
 import subprocess
 import os
 import tempfile
-from typing import Optional
-import whisper
 import openai
+from typing import Optional
 
-# Configura la tua chiave OpenAI
-openai.api_key = "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"
+# Imposta la chiave API di OpenAI dalle variabili d'ambiente
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 app = FastAPI()
 
 @app.get("/")
 async def root():
-    return {"message": "Welcome to FastAPI!"}
+    return {"greeting": "Hello, World!", "message": "Welcome to FastAPI!"}
 
+# Funzione per convertire audio in MP3
 def convert_to_mp3(input_path: str) -> str:
     output_path = tempfile.mktemp(suffix=".mp3")
     convert_command = f"ffmpeg -y -i {input_path} -acodec libmp3lame -ar 48000 -ac 2 {output_path}"
     subprocess.run(convert_command, shell=True, check=True)
     return output_path
 
+# Funzione per creare silenzio
 def create_silence(duration_ms: int) -> str:
     output_path = tempfile.mktemp(suffix=".mp3")
     silence_command = f"ffmpeg -y -f lavfi -i anullsrc=r=48000:cl=stereo -t {duration_ms / 1000} {output_path}"
     subprocess.run(silence_command, shell=True, check=True)
     return output_path
 
+# Funzione per calcolare la durata di un file audio
 def get_audio_duration(file_path: str) -> float:
     command = f"ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 {file_path}"
     result = subprocess.run(command, shell=True, capture_output=True, text=True)
@@ -53,24 +55,28 @@ async def monta_podcast(
     tracce_paths = []
 
     try:
+        # Salva e converte lo stacchetto in MP3
         stacchetto_path = tempfile.mktemp(suffix=".mp3")
         with open(stacchetto_path, "wb") as f:
             f.write(await stacchetto.read())
         stacchetto_path = convert_to_mp3(stacchetto_path)
         temp_files.append(stacchetto_path)
 
+        # Salva e converte la musica di sottofondo in MP3
         background_music_path = tempfile.mktemp(suffix=".mp3")
         with open(background_music_path, "wb") as f:
             f.write(await background_music.read())
         background_music_path = convert_to_mp3(background_music_path)
         temp_files.append(background_music_path)
 
+        # Lista delle tracce vocali
         tracce_vocali = [
             traccia_vocale1, traccia_vocale2, traccia_vocale3, traccia_vocale4,
             traccia_vocale5, traccia_vocale6, traccia_vocale7, traccia_vocale8,
             traccia_vocale9, traccia_vocale10
         ]
 
+        # Salva e converte ogni traccia vocale fornita in MP3
         for traccia in tracce_vocali:
             if traccia is not None:
                 traccia_path = tempfile.mktemp(suffix=".mp3")
@@ -80,29 +86,35 @@ async def monta_podcast(
                 tracce_paths.append(traccia_path)
                 temp_files.append(traccia_path)
 
+        # Genera un file di silenzio breve (500ms) tra le tracce vocali
         silence_path = create_silence(500)
         temp_files.append(silence_path)
 
+        # Concatenazione delle tracce vocali con lo stacchetto e i silenzi
         concatenated_audio_path = tempfile.mktemp(suffix=".mp3")
         concat_list_path = tempfile.mktemp(suffix=".txt")
         temp_files.append(concat_list_path)
 
+        # Creiamo un file di testo per la concatenazione
         with open(concat_list_path, "w") as f:
             f.write(f"file '{stacchetto_path}'\n")
             for idx, traccia_path in enumerate(tracce_paths):
                 f.write(f"file '{traccia_path}'\n")
-                if idx < len(tracce_paths) - 1:
+                if idx < len(tracce_paths) - 1:  # Aggiunge silenzio solo tra le tracce vocali
                     f.write(f"file '{silence_path}'\n")
 
-        concat_command = (
-            f"ffmpeg -y -f concat -safe 0 -i {concat_list_path} -c copy {concatenated_audio_path}"
-        )
+        # Comando per concatenare i file usando un file di lista
+        concat_command = f"ffmpeg -y -f concat -safe 0 -i {concat_list_path} -c copy {concatenated_audio_path}"
         subprocess.run(concat_command, shell=True, check=True)
         temp_files.append(concatenated_audio_path)
 
-        durata_voci = get_audio_duration(concatenated_audio_path) + 1.5
+        # Calcola la durata totale delle tracce vocali concatenate
+        durata_voci = get_audio_duration(concatenated_audio_path) + 1.5  # Aggiungi 1.5 secondi per la dissolvenza finale
 
+        # Percorso per il file finale del podcast
         output_podcast_path = tempfile.mktemp(suffix=".mp3")
+
+        # Comando per gestire il loop della musica di sottofondo e dissolvenza
         final_command = (
             f"ffmpeg -y -stream_loop -1 -i {background_music_path} -i {concatenated_audio_path} "
             f"-filter_complex \"[0]volume=0.1,afade=t=in:st=0:d=2,afade=t=out:st={durata_voci - 1.5}:d=1.5[bg];"
@@ -110,7 +122,10 @@ async def monta_podcast(
         )
         subprocess.run(final_command, shell=True, check=True)
 
+        # Pianifica la rimozione del file di output dopo l'invio della risposta
         background_tasks.add_task(os.remove, output_podcast_path)
+
+        # Pianifica la rimozione dei file temporanei di input
         for path in temp_files:
             background_tasks.add_task(os.remove, path)
 
@@ -121,37 +136,34 @@ async def monta_podcast(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/video-extraction/")
-async def video_extraction(file: UploadFile = File(...)):
-    temp_audio_path = tempfile.mktemp(suffix=".mp3")
-    temp_video_path = tempfile.mktemp(suffix=".mp4")
-
+@app.post("/video-transcription-summary/")
+async def video_transcription_summary(file: UploadFile = File(...)):
     try:
-        with open(temp_video_path, "wb") as f:
+        # Salva il file video
+        video_path = tempfile.mktemp(suffix=".mp4")
+        with open(video_path, "wb") as f:
             f.write(await file.read())
 
-        convert_command = f"ffmpeg -y -i {temp_video_path} -q:a 0 -map a {temp_audio_path}"
-        subprocess.run(convert_command, shell=True, check=True)
+        # Estrae l'audio dal video
+        audio_path = tempfile.mktemp(suffix=".mp3")
+        extract_audio_command = f"ffmpeg -y -i {video_path} -q:a 0 -map a {audio_path}"
+        subprocess.run(extract_audio_command, shell=True, check=True)
 
+        # Trascrivi l'audio usando Whisper
+        import whisper
         model = whisper.load_model("base")
-        result = model.transcribe(temp_audio_path)
-        transcript_text = result["text"]
+        result = model.transcribe(audio_path)
+        transcription = result["text"]
 
+        # Usa OpenAI per creare una sintesi
         response = openai.Completion.create(
-            engine="text-davinci-003",
-            prompt=f"Riassumi il seguente testo:\n\n{transcript_text}",
-            max_tokens=200,
+            model="text-davinci-003",
+            prompt=f"Riassumi il seguente testo in modo esaustivo:\n\n{transcription}",
+            temperature=0.7,
+            max_tokens=300
         )
         summary = response["choices"][0]["text"].strip()
 
-        return {"transcript": transcript_text, "summary": summary}
-
-    except subprocess.CalledProcessError as e:
-        raise HTTPException(status_code=500, detail=f"Errore durante l'elaborazione del video: {e}")
+        return {"transcription": transcription, "summary": summary}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        if os.path.exists(temp_audio_path):
-            os.remove(temp_audio_path)
-        if os.path.exists(temp_video_path):
-            os.remove(temp_video_path)
