@@ -57,7 +57,7 @@ async def transcribe_video(video: UploadFile = File(...)):
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "Sei un assistente utile."},
-                {"role": "user", "content": f"Riassumi il seguente testo: {transcription}"}
+                {"role": "user", "content": f"Riassumi il seguente testo e da questo crea un articolo come se fosse per un blog didattico: {transcription}"}
             ]
         )
 
