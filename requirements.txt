@@ -3,3 +3,4 @@ hypercorn==0.14.4
 python-multipart
 whisper
 openai
+ffmpeg-python
