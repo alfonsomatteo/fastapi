@@ -5,4 +5,4 @@ nixPkgs = ["python3", "ffmpeg"]
 command = "python3 -m venv /opt/venv && . /opt/venv/bin/activate && pip install -r requirements.txt"
 
 [start]
-command = "hypercorn main:app --bind 0.0.0.0:${PORT}"
+command = "hypercorn main:app --bind 0.0.0.0:${PORT} --timeout 120"
