@@ -37,11 +37,11 @@ def transcribe_with_whisper(video_path: str) -> str:
 
 # Funzione per generare la sintesi
 def generate_summary(transcript: str) -> str:
-    openai.api_key = os.getenv("OPENAI_API_KEY")
+    openai.api_key = os.getenv("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")
     response = openai.Completion.create(
         engine="text-davinci-003",
         prompt=f"Genera una sintesi esaustiva del seguente testo:\n{transcript}",
-        max_tokens=200,
+        max_tokens=300,
         temperature=0.5
     )
     return response["choices"][0]["text"].strip()
