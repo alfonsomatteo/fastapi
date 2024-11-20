@@ -3,13 +3,14 @@ from fastapi.responses import FileResponse
 import subprocess
 import os
 import tempfile
-import openai
 from typing import Optional
+import whisper
+import openai
+
+# Configura OpenAI API Key
+openai.api_key = "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"
 
 app = FastAPI()
-
-# Configura la chiave OpenAI
-openai.api_key = "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"
 
 @app.get("/")
 async def root():
@@ -141,7 +142,6 @@ async def monta_podcast(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @app.post("/video-extraction/")
 async def video_extraction(video: UploadFile = File(...)):
     temp_files = []
@@ -159,8 +159,7 @@ async def video_extraction(video: UploadFile = File(...)):
         temp_files.append(audio_path)
 
         # Usa Whisper per trascrivere l'audio
-        import whisper
-        model = whisper.load_model("base")
+        model = whisper.load_model("base")  # Modello Whisper
         transcription = model.transcribe(audio_path)
 
         # Usa OpenAI per generare un riepilogo
@@ -185,3 +184,4 @@ async def video_extraction(video: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Errore durante il comando FFmpeg: {e}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
